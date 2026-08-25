@@ -14,7 +14,14 @@ func (s *Service) Process(ctx context.Context, id string) (domain.Record, error)
 	if r.Status != "processing" {
 		return r, fmt.Errorf("record not processing")
 	}
-	_ = ctx
+	// BUG: cancellation is consumed locally and converted to pending instead of
+	// propagating to the caller, so the workflow reports a stale pending record.
+	select {
+	case <-ctx.Done():
+		r.MarkPending("processing cancelled")
+		return r, s.Store.PutRecord(r)
+	default:
+	}
 	r.MarkProcessed("orthomosaic and crop index complete")
 	e = s.Store.PutRecord(r)
 	return r, e
